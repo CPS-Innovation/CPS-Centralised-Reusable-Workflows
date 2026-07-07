@@ -1,0 +1,12 @@
+# Code Owners for CPS Reusable Workflows
+# These owners will be automatically requested for review on PRs
+
+# Default owners for everything
+* @CPS-Innovation/platform-team
+
+# Workflow files require platform team review
+/.github/workflows/ @CPS-Innovation/platform-team
+
+# Documentation can be reviewed by broader team
+/docs/ @CPS-Innovation/platform-team @CPS-Innovation/developers
+/examples/ @CPS-Innovation/platform-team @CPS-Innovation/developers

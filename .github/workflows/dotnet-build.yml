@@ -1,0 +1,97 @@
+name: .NET Build (Reusable)
+
+on:
+  workflow_call:
+    inputs:
+      runner:
+        description: 'Runner to use (e.g., ubuntu-latest or cps-cent-runner-nonprod)'
+        type: string
+        default: 'cps-cent-runner-nonprod'
+      dotnet-version:
+        description: '.NET SDK version (only used for GitHub-hosted runners)'
+        type: string
+        default: '8.0.x'
+      solution-file:
+        description: 'Path to solution or project file'
+        type: string
+        required: true
+      configuration:
+        description: 'Build configuration (Debug/Release)'
+        type: string
+        default: 'Release'
+      run-tests:
+        description: 'Run unit tests'
+        type: boolean
+        default: true
+      use-github-packages:
+        description: 'Add GitHub Packages as NuGet source'
+        type: boolean
+        default: false
+      timeout:
+        description: 'Job timeout in minutes'
+        type: number
+        default: 30
+      upload-artifact:
+        description: 'Upload build artifacts'
+        type: boolean
+        default: true
+      artifact-name:
+        description: 'Name for the uploaded artifact'
+        type: string
+        default: 'build-output'
+
+jobs:
+  build:
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: ${{ inputs.timeout }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Setup .NET only for GitHub-hosted runners (ubuntu, windows, macos)
+      - name: Setup .NET
+        if: startsWith(inputs.runner, 'ubuntu') || startsWith(inputs.runner, 'windows') || startsWith(inputs.runner, 'macos')
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ inputs.dotnet-version }}
+
+      # Verify .NET version (runs for all runners)
+      - name: Verify .NET Version
+        run: dotnet --version
+
+      - name: Add GitHub Packages NuGet Source
+        if: inputs.use-github-packages
+        run: |
+          dotnet nuget add source "https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json" \
+            --name github-packages \
+            --username ${{ github.actor }} \
+            --password ${{ github.token }} \
+            --store-password-in-clear-text
+
+      - name: Restore Dependencies
+        run: dotnet restore ${{ inputs.solution-file }}
+
+      - name: Build
+        run: dotnet build ${{ inputs.solution-file }} --configuration ${{ inputs.configuration }} --no-restore
+
+      - name: Test
+        if: inputs.run-tests
+        run: dotnet test ${{ inputs.solution-file }} --configuration ${{ inputs.configuration }} --no-build --verbosity normal --logger trx --results-directory TestResults
+
+      - name: Upload Test Results
+        if: inputs.run-tests && always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-${{ github.run_number }}
+          path: TestResults/
+          if-no-files-found: ignore
+
+      - name: Upload Build Artifact
+        if: inputs.upload-artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.artifact-name }}-${{ github.run_number }}
+          path: |
+            **/bin/${{ inputs.configuration }}/
+            !**/obj/

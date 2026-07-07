@@ -1,0 +1,29 @@
+# Example: Basic .NET Build
+# Copy this to your repo's .github/workflows/build.yml
+
+name: Build
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      runner:
+        description: 'Runner to use'
+        type: choice
+        default: 'cps-cent-runner-nonprod'
+        options:
+          - cps-cent-runner-nonprod
+          - ubuntu-latest
+
+jobs:
+  build:
+    uses: CPS-Innovation/CPS-Reusable-Workflows/.github/workflows/dotnet-build.yml@v1
+    with:
+      runner: ${{ inputs.runner || 'cps-cent-runner-nonprod' }}
+      solution-file: 'src/MyApplication.sln'
+      run-tests: true
+      timeout: 15
+    secrets: inherit
