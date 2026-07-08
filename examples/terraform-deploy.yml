@@ -1,0 +1,79 @@
+# Example: Terraform Deploy Pipeline
+# Copy this to your repo's .github/workflows/terraform-deploy.yml
+
+name: Terraform Deploy
+
+on:
+  push:
+    branches: [main, non-prod]
+    paths-ignore:
+      - 'README.md'
+      - '*.md'
+      - '.github/workflows/docker-*.yml'
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'Action to perform'
+        type: choice
+        default: 'plan'
+        options:
+          - plan
+          - apply
+          - destroy
+
+jobs:
+  # Always run plan first
+  plan:
+    uses: CPS-Innovation/CPS-Centralised-Reusable-Workflows/.github/workflows/terraform-plan.yml@v1
+    with:
+      runner: 'cps-cent-runner-nonprod'
+      var-file: 'environments/non-prod.tfvars'
+      environment: 'nonprod'
+      state-resource-group: 'rg-tfstate-nonprod'
+      state-storage-account: 'sttfstatenonprod'
+      state-container: 'tfstate'
+      state-key: 'nonprod.tfstate'
+      timeout: 30
+    secrets:
+      AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+      AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+  # Apply only if plan detected changes (or manual trigger)
+  apply:
+    needs: plan
+    if: |
+      (needs.plan.outputs.has_changes == 'true') ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'apply')
+    uses: CPS-Innovation/CPS-Centralised-Reusable-Workflows/.github/workflows/terraform-apply.yml@v1
+    with:
+      runner: 'cps-cent-runner-nonprod'
+      var-file: 'environments/non-prod.tfvars'
+      environment: 'non-prod'  # GitHub environment with approval gates
+      state-resource-group: 'rg-tfstate-nonprod'
+      state-storage-account: 'sttfstatenonprod'
+      state-container: 'tfstate'
+      state-key: 'nonprod.tfstate'
+      timeout: 30
+    secrets:
+      AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+      AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+  # Destroy only on manual trigger
+  destroy:
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'destroy'
+    uses: CPS-Innovation/CPS-Centralised-Reusable-Workflows/.github/workflows/terraform-destroy.yml@v1
+    with:
+      runner: 'cps-cent-runner-nonprod'
+      var-file: 'environments/non-prod.tfvars'
+      environment: 'non-prod'  # GitHub environment with approval gates
+      state-resource-group: 'rg-tfstate-nonprod'
+      state-storage-account: 'sttfstatenonprod'
+      state-container: 'tfstate'
+      state-key: 'nonprod.tfstate'
+      timeout: 30
+    secrets:
+      AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+      AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}

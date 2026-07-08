@@ -1,77 +1,259 @@
-# CPS Reusable Workflows
+# CPS Centralised Reusable Workflows
 
 Centralized repository for GitHub Actions reusable workflows used across CPS-Innovation repositories.
 
 ## Available Workflows
 
-| Workflow | Description | Documentation |
-|----------|-------------|---------------|
-| [dotnet-build.yml](.github/workflows/dotnet-build.yml) | Build, test, and package .NET applications | [docs/dotnet-build.md](docs/dotnet-build.md) |
-| [terraform-plan.yml](.github/workflows/terraform-plan.yml) | Terraform plan with security scanning | [docs/terraform-plan.md](docs/terraform-plan.md) |
-| [terraform-apply.yml](.github/workflows/terraform-apply.yml) | Terraform apply with approval gates | [docs/terraform-apply.md](docs/terraform-apply.md) |
-| [docker-build.yml](.github/workflows/docker-build.yml) | Build and push Docker images to ACR | [docs/docker-build.md](docs/docker-build.md) |
+| Workflow | Description |
+|----------|-------------|
+| [dotnet-build.yml](.github/workflows/dotnet-build.yml) | Build, test, and package .NET applications |
+| [terraform-plan.yml](.github/workflows/terraform-plan.yml) | Terraform plan with change detection |
+| [terraform-apply.yml](.github/workflows/terraform-apply.yml) | Terraform apply with approval gates |
+| [terraform-destroy.yml](.github/workflows/terraform-destroy.yml) | Terraform destroy with approval gates |
 
-## Quick Start
+---
 
-### 1. Reference a workflow
+## .NET Build Workflow
+
+Build, test, and package .NET applications.
+
+### Usage
 
 ```yaml
-name: Build
+jobs:
+  build:
+    uses: CPS-Innovation/CPS-Centralised-Reusable-Workflows/.github/workflows/dotnet-build.yml@v1
+    with:
+      solution-file: 'src/MyApp.sln'
+    secrets: inherit
+```
+
+### Inputs
+
+| Input | Required | Default | Description |
+|-------|----------|---------|-------------|
+| `runner` | No | `cps-cent-runner-nonprod` | Runner to use |
+| `solution-file` | **Yes** | - | Path to .sln or .csproj file |
+| `dotnet-version` | No | `8.0.x` | .NET SDK version (GitHub-hosted only) |
+| `configuration` | No | `Release` | Build configuration |
+| `run-tests` | No | `true` | Run unit tests |
+| `use-github-packages` | No | `false` | Add GitHub Packages NuGet source |
+| `timeout` | No | `30` | Job timeout in minutes |
+
+### Example with GitHub Packages
+
+```yaml
+jobs:
+  build:
+    uses: CPS-Innovation/CPS-Centralised-Reusable-Workflows/.github/workflows/dotnet-build.yml@v1
+    with:
+      solution-file: 'src/MyApp.sln'
+      use-github-packages: true
+      run-tests: true
+      timeout: 15
+    secrets: inherit
+```
+
+---
+
+## Terraform Workflows
+
+Infrastructure deployment with plan, apply, and destroy stages.
+
+### Prerequisites
+
+1. **Azure OIDC Authentication** - Configure federated credentials in your Azure AD app
+2. **GitHub Secrets** - Add to your repository:
+   - `AZURE_CLIENT_ID`
+   - `AZURE_TENANT_ID`
+   - `AZURE_SUBSCRIPTION_ID`
+3. **GitHub Environment** - Create environments (e.g., `non-prod`, `prod`) with approval gates
+
+### Inputs (Same for all Terraform workflows)
+
+| Input | Required | Default | Description |
+|-------|----------|---------|-------------|
+| `runner` | No | `cps-cent-runner-nonprod` | Runner to use |
+| `working-directory` | No | `.` | Terraform working directory |
+| `var-file` | **Yes** | - | Path to tfvars file |
+| `environment` | **Yes** | - | Environment name / GitHub environment |
+| `state-resource-group` | **Yes** | - | Resource group containing state storage |
+| `state-storage-account` | **Yes** | - | Storage account name for tfstate |
+| `state-container` | No | `tfstate` | Storage container name |
+| `state-key` | **Yes** | - | State file name (e.g., `nonprod.tfstate`) |
+| `timeout` | No | `30` | Job timeout in minutes |
+
+### Secrets Required
+
+| Secret | Description |
+|--------|-------------|
+| `AZURE_CLIENT_ID` | Azure AD app client ID |
+| `AZURE_TENANT_ID` | Azure AD tenant ID |
+| `AZURE_SUBSCRIPTION_ID` | Azure subscription ID |
+
+---
+
+### Terraform Plan
+
+Run terraform plan and detect changes.
+
+```yaml
+jobs:
+  plan:
+    uses: CPS-Innovation/CPS-Centralised-Reusable-Workflows/.github/workflows/terraform-plan.yml@v1
+    with:
+      var-file: 'environments/non-prod.tfvars'
+      environment: 'nonprod'
+      state-resource-group: 'rg-tfstate-nonprod'
+      state-storage-account: 'sttfstatenonprod'
+      state-container: 'tfstate'
+      state-key: 'myapp-nonprod.tfstate'
+    secrets:
+      AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+      AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+```
+
+**Output:** `has_changes` - `true` if changes detected, `false` otherwise.
+
+---
+
+### Terraform Apply
+
+Apply changes with environment approval gates.
+
+```yaml
+jobs:
+  apply:
+    needs: plan
+    if: needs.plan.outputs.has_changes == 'true'
+    uses: CPS-Innovation/CPS-Centralised-Reusable-Workflows/.github/workflows/terraform-apply.yml@v1
+    with:
+      var-file: 'environments/non-prod.tfvars'
+      environment: 'non-prod'  # GitHub environment with approvers
+      state-resource-group: 'rg-tfstate-nonprod'
+      state-storage-account: 'sttfstatenonprod'
+      state-container: 'tfstate'
+      state-key: 'myapp-nonprod.tfstate'
+    secrets:
+      AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+      AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+```
+
+---
+
+### Terraform Destroy
+
+Destroy infrastructure (manual trigger recommended).
+
+```yaml
+jobs:
+  destroy:
+    if: github.event_name == 'workflow_dispatch'
+    uses: CPS-Innovation/CPS-Centralised-Reusable-Workflows/.github/workflows/terraform-destroy.yml@v1
+    with:
+      var-file: 'environments/non-prod.tfvars'
+      environment: 'non-prod'
+      state-resource-group: 'rg-tfstate-nonprod'
+      state-storage-account: 'sttfstatenonprod'
+      state-container: 'tfstate'
+      state-key: 'myapp-nonprod.tfstate'
+    secrets:
+      AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+      AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+```
+
+---
+
+### Full Terraform Pipeline Example
+
+Complete pipeline with plan, apply, and destroy:
+
+```yaml
+name: Terraform Deploy
 
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - '*.md'
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'Action to perform'
+        type: choice
+        default: 'plan'
+        options:
+          - plan
+          - apply
+          - destroy
 
 jobs:
-  build:
-    uses: CPS-Innovation/CPS-Reusable-Workflows/.github/workflows/dotnet-build.yml@v1
+  plan:
+    uses: CPS-Innovation/CPS-Centralised-Reusable-Workflows/.github/workflows/terraform-plan.yml@v1
     with:
-      solution-file: 'src/MyApp.sln'
+      var-file: 'environments/non-prod.tfvars'
+      environment: 'nonprod'
+      state-resource-group: 'rg-tfstate-nonprod'
+      state-storage-account: 'sttfstatenonprod'
+      state-key: 'myapp-nonprod.tfstate'
+    secrets:
+      AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+      AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+  apply:
+    needs: plan
+    if: |
+      needs.plan.outputs.has_changes == 'true' ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'apply')
+    uses: CPS-Innovation/CPS-Centralised-Reusable-Workflows/.github/workflows/terraform-apply.yml@v1
+    with:
+      var-file: 'environments/non-prod.tfvars'
+      environment: 'non-prod'
+      state-resource-group: 'rg-tfstate-nonprod'
+      state-storage-account: 'sttfstatenonprod'
+      state-key: 'myapp-nonprod.tfstate'
+    secrets:
+      AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+      AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+  destroy:
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'destroy'
+    uses: CPS-Innovation/CPS-Centralised-Reusable-Workflows/.github/workflows/terraform-destroy.yml@v1
+    with:
+      var-file: 'environments/non-prod.tfvars'
+      environment: 'non-prod'
+      state-resource-group: 'rg-tfstate-nonprod'
+      state-storage-account: 'sttfstatenonprod'
+      state-key: 'myapp-nonprod.tfstate'
+    secrets:
+      AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+      AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 ```
 
-### 2. Use self-hosted runners (recommended)
-
-```yaml
-jobs:
-  build:
-    uses: CPS-Innovation/CPS-Reusable-Workflows/.github/workflows/dotnet-build.yml@v1
-    with:
-      runner: 'cps-cent-runner-nonprod'
-      solution-file: 'src/MyApp.sln'
-```
-
-### 3. Pass secrets (when required)
-
-```yaml
-jobs:
-  build:
-    uses: CPS-Innovation/CPS-Reusable-Workflows/.github/workflows/dotnet-build.yml@v1
-    with:
-      solution-file: 'src/MyApp.sln'
-      use-github-packages: true
-    secrets: inherit  # Passes GITHUB_TOKEN automatically
-```
+---
 
 ## Versioning
 
 Always reference workflows by **tag** (not `main`) for stability:
 
-| Reference | Use Case |
-|-----------|----------|
-| `@v1` | Production - stable, receives patches |
-| `@v1.2.0` | Pin to specific version |
-| `@main` | Development only - may have breaking changes |
-
 ```yaml
 # Recommended - major version tag
-uses: CPS-Innovation/CPS-Reusable-Workflows/.github/workflows/dotnet-build.yml@v1
+uses: CPS-Innovation/CPS-Centralised-Reusable-Workflows/.github/workflows/dotnet-build.yml@v1
 
 # Pin to exact version
-uses: CPS-Innovation/CPS-Reusable-Workflows/.github/workflows/dotnet-build.yml@v1.2.0
+uses: CPS-Innovation/CPS-Centralised-Reusable-Workflows/.github/workflows/dotnet-build.yml@v1.2.0
 
 # NOT recommended for production
-uses: CPS-Innovation/CPS-Reusable-Workflows/.github/workflows/dotnet-build.yml@main
+uses: CPS-Innovation/CPS-Centralised-Reusable-Workflows/.github/workflows/dotnet-build.yml@main
 ```
+
+---
 
 ## Runner Selection
 
@@ -83,51 +265,9 @@ uses: CPS-Innovation/CPS-Reusable-Workflows/.github/workflows/dotnet-build.yml@m
 
 Self-hosted runners have pre-installed tools (.NET, Terraform, Azure CLI) - faster builds, no firewall issues.
 
-## Best Practices for Calling Teams
-
-### 1. Always set timeouts
-```yaml
-with:
-  timeout: 15  # Fail fast, don't wait 6 hours
-```
-
-### 2. Use environment-specific runners
-```yaml
-jobs:
-  deploy-nonprod:
-    uses: ./.github/workflows/deploy.yml
-    with:
-      runner: 'cps-cent-runner-nonprod'
-      environment: 'nonprod'
-
-  deploy-prod:
-    needs: deploy-nonprod
-    uses: ./.github/workflows/deploy.yml
-    with:
-      runner: 'cps-cent-runner-prod'
-      environment: 'prod'
-```
-
-### 3. Pin workflow versions in production
-```yaml
-# Create a .github/dependabot.yml to get update PRs
-version: 2
-updates:
-  - package-ecosystem: "github-actions"
-    directory: "/"
-    schedule:
-      interval: "weekly"
-```
-
-## Contributing
-
-1. Create a feature branch
-2. Update workflow and documentation
-3. Test in a non-prod repo first
-4. Create PR with example usage
-5. After merge, create a release tag
+---
 
 ## Support
 
-- Issues: [GitHub Issues](https://github.com/CPS-Innovation/CPS-Reusable-Workflows/issues)
+- Issues: [GitHub Issues](https://github.com/CPS-Innovation/CPS-Centralised-Reusable-Workflows/issues)
 - Teams: #devops-support channel
