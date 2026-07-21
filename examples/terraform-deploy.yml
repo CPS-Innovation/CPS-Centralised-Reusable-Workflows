@@ -24,7 +24,7 @@ on:
 jobs:
   # Always run plan first
   plan:
-    uses: CPS-Innovation/CPS-Centralised-Reusable-Workflows/.github/workflows/terraform-plan.yml@v1
+    uses: CPS-Innovation/CPS-Centralised-Reusable-Workflows/.github/workflows/terraform-plan.yml@v1.2
     with:
       runner: 'cps-cent-runner-nonprod'
       var-file: 'environments/non-prod.tfvars'
@@ -38,6 +38,7 @@ jobs:
       AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
       AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
       AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      AZURE_SUBSCRIPTION_ID_STATE: ${{ secrets.AZURE_SUBSCRIPTION_ID_STATE }}       # Optional: Use different subscription for state storage (centralised state model)
 
   # Apply only if plan detected changes (or manual trigger)
   apply:
@@ -45,7 +46,7 @@ jobs:
     if: |
       (needs.plan.outputs.has_changes == 'true') ||
       (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'apply')
-    uses: CPS-Innovation/CPS-Centralised-Reusable-Workflows/.github/workflows/terraform-apply.yml@v1
+    uses: CPS-Innovation/CPS-Centralised-Reusable-Workflows/.github/workflows/terraform-apply.yml@v1.2
     with:
       runner: 'cps-cent-runner-nonprod'
       var-file: 'environments/non-prod.tfvars'
@@ -59,6 +60,7 @@ jobs:
       AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
       AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
       AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      AZURE_SUBSCRIPTION_ID_STATE: ${{ secrets.AZURE_SUBSCRIPTION_ID_STATE }}       # Optional: Use different subscription for state storage (centralised state model)
 
   # Destroy only on manual trigger
   destroy:
@@ -77,3 +79,4 @@ jobs:
       AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
       AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
       AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      AZURE_SUBSCRIPTION_ID_STATE: ${{ secrets.AZURE_SUBSCRIPTION_ID_STATE }}       # Optional: Use different subscription for state storage (centralised state model)
