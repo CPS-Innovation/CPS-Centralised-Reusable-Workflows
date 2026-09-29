@@ -35,6 +35,10 @@ on:
         description: 'State file name (e.g., nonprod.tfstate)'
         type: string
         required: true
+      terraform-binary:
+        description: 'Terraform binary name (e.g. terraform, terraform115). Must be pre-installed on the runner.'
+        type: string
+        default: 'terraform'
       timeout:
         description: 'Job timeout in minutes'
         type: number
@@ -93,10 +97,11 @@ jobs:
           ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           ARM_SUBSCRIPTION_ID_STATE: ${{ secrets.AZURE_SUBSCRIPTION_ID_STATE || secrets.AZURE_SUBSCRIPTION_ID }}
           ARM_USE_OIDC: true
+          TERRAFORM_BIN: ${{ inputs.terraform-binary }}
         run: |
-          terraform version
+          $TERRAFORM_BIN version
 
-          terraform init -reconfigure \
+          $TERRAFORM_BIN init -reconfigure \
             -backend-config="subscription_id=$ARM_SUBSCRIPTION_ID_STATE" \
             -backend-config="tenant_id=$ARM_TENANT_ID" \
             -backend-config="resource_group_name=${{ inputs.state-resource-group }}" \
@@ -104,9 +109,9 @@ jobs:
             -backend-config="container_name=${{ inputs.state-container }}" \
             -backend-config="key=${{ inputs.state-key }}"
 
-          terraform validate
+          $TERRAFORM_BIN validate
 
-          PLAN_OUTPUT=$(terraform plan -var-file=${{ inputs.var-file }} -no-color -out=tfplan 2>&1)
+          PLAN_OUTPUT=$($TERRAFORM_BIN plan -var-file=${{ inputs.var-file }} -no-color -out=tfplan 2>&1)
           echo "$PLAN_OUTPUT"
 
           if echo "$PLAN_OUTPUT" | grep -q "No changes"; then
